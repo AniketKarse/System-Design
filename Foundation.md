@@ -1,27 +1,222 @@
-# 🏗️ System Design Foundations
+# 🏗️ System Design Foundations  
+### Understanding Core Concepts Through an Online/Offline System
 
-> Before designing for millions of users, design your thinking
-> correctly.
+> This repository documents foundational System Design concepts.  
+> We use an **Online/Offline system** as a running example to understand reliability, scalability, efficiency, and architectural trade-offs.
 
-This document covers the **core prerequisite concepts** you must
-understand before diving into large-scale system design.
+---
 
-------------------------------------------------------------------------
+# 📌 Why This Example?
 
-# 🟢 Online / Offline System Design
+Tracking whether a user is online/offline sounds simple. But it teaches us:
 
-Tracking whether a user is online or offline seems simple --- until you
-think deeply.
+* Distributed system reliability
+* Handling failure scenarios
+* Database trade-offs
+* API efficiency
+* Connection management
+* Real-time communication patterns
 
-## ❌ The Naive Approach
+This is not about status tracking. This is about **system thinking**.
 
-If user logs in → set online = true\
-If user logs out → set online = false
+---
 
-### 🚨 The Real Problem
+# 🟢 The Naive Approach
 
-What if: - The app crashes? - The internet disconnects? - The system
-goes down? - The user force closes the app?
+If user logs in  → `online = true`  
+If user logs out → `online = false`  
 
-You **cannot guarantee** that an API call will always be made to mark
-the user as offline.
+When user logs in:
+- Send API call
+- Mark status = online
+
+---
+
+## 🚨 The Real Problem
+
+Marking someone **online** is easy. Marking someone **offline** is unreliable.
+
+Because:
+- App can crash
+- Network can drop
+- Browser can close
+- System can fail
+
+> **Crucial Realization:** You cannot guarantee that an API call will be made during a failure.
+
+---
+
+# 💓 The Heartbeat Pattern
+
+Instead of waiting for an offline call, we continuously send a **heartbeat** while the user is active.
+
+If heartbeat stops → user is offline.
+
+### Flow Diagram Concept
+**User Client** → *(Every few seconds)* → **Heartbeat API** → **Server** → **Database** (Stored with TTL)
+
+**If no heartbeat is received:** TTL expires → Row deleted → User considered Offline  
+
+> **Absence of record = Offline**
+
+---
+
+# 🧠 API Design Principle
+
+## Always ask:
+> ❓ “Can you batch it?”
+
+Instead of multiple API calls, send a batch request.
+
+### Why batching?
+- Fewer DB hits
+- Lower network overhead
+- Better performance
+- Improved scalability
+
+---
+
+# ⏳ Why Not Cron?
+
+We could use a cron job to check inactive users.
+
+But:
+- We must handle edge cases manually
+- Added complexity
+- More operational burden
+
+Instead, we delegate expiration to the database.
+
+---
+
+# 🗄️ Deletion > Updating
+
+Instead of updating: `UPDATE users SET online = false`
+
+We **delete** the row when TTL expires.
+
+**Why?**
+- Saves storage
+- Cleaner model
+- No stale flags
+- Absence of row = Offline
+
+---
+
+# 🛢️ Database Requirement: TTL Support
+
+We need a database that supports automatic key expiration.
+
+* **🔴 Redis:** In-memory, extremely fast, native TTL support. Ideal for high transaction frequency.
+* **🟡 DynamoDB:** Managed NoSQL service, TTL support, persistent storage, highly scalable.
+
+---
+
+## 🤔 Decision Considerations
+
+- Data volume is small → storage not critical
+- Transaction frequency is high → performance matters
+
+**Focus on:** Throughput, Latency, and Transaction handling efficiency.
+
+---
+
+# 🌐 Improving UX: WebSockets
+
+Polling is repetitive and inefficient.
+
+**Better approach:** `Client ⇄ WebSocket ⇄ Server`
+
+- Persistent connection
+- Real-time updates
+- Lower latency
+
+---
+
+# 🔌 Scaling Problem: Database Connections
+
+If thousands of users send heartbeats:  
+`Users → API Layer → Database`
+
+**The Problem:**
+- Thousands of DB connections
+- High overhead
+- Database becomes the bottleneck
+
+---
+
+# 🏊 Connection Pooling
+
+A connection pool is a set of pre-established database connections that can be reused.
+
+Instead of: **Create → Use → Destroy**
+
+We:
+1. Borrow connection
+2. Execute query
+3. Return to pool
+
+**Benefits:** Reduced latency, lower DB stress, better scalability, and improved throughput.
+
+---
+
+# 🏗️ The Big Picture
+
+## 🚀 The Core Philosophy
+> **"We exist because business exists, and business exists because of Product."**
+
+Everything starts with the business goal. If the engineering doesn't serve the product, it’s just expensive art.
+
+### The Hierarchy of Needs
+1. **Product** (The Big Idea)
+2. **Sub-product features** (The User Experience)
+3. **Services** (The Logical Engines)
+4. **Microservices** (The Atomic Units)
+
+---
+
+## 🛠️ The "Atomic" Rule of Microservices
+Keep your microservices **atomic**. A service should do one thing exceptionally well.
+
+* **The Trap:** Don't let a single service grow so big it becomes its own product.
+* **Fencing:** Every system is "infinitely buildable." We need to decide the scope of the service.
+* **Pro-Tip:** Always think about **reusability** while creating a service.
+
+---
+
+## 🔍 Defining the Scope
+When drawing your "fence," categorize your requirements:
+
+* **Functional:** Features for the user (Something a system **must have**).
+* **Non-functional:** How the system is implemented (Determines **operational capabilities**).
+
+---
+
+## 💡 The "Don't Guess" Checklist
+While designing any system:
+1. **Do not assume implicitly.**
+2. **Ask critical questions** (the ones that can change the product or the engineering approach).
+3. **Seek clarification.**
+
+---
+
+## 🏗️ Building Approaches
+
+### ⬇️ Bottom-Up (The "Big Player" Move)
+* Building individual components and then integrating them.
+* Generally used by big orgs that already have a plan in mind and the resources to do it.
+
+### ⬆️ Top-Down (The "Startup" Move)
+* Build **MVP** and then incrementally add features.
+* Best way for small/new orgs. **Don't overthink it!**
+
+---
+
+## ⚠️ Words to Live By
+* **No Premature Optimizations!!**
+* While building the system, **identify the bottleneck** and fix it.
+
+---
+
+## 📌 Assignment
+Recreate the Online/Offline system using **WebSockets instead of polling.**
